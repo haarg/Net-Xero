@@ -13,6 +13,7 @@ use Template::Alloy;
 use Crypt::OpenSSL::RSA;
 use URI::Escape;
 use Data::Dumper;
+use IO::All;
 
 $Net::OAuth::PROTOCOL_VERSION = Net::OAuth::PROTOCOL_VERSION_1_0A;
 
@@ -78,12 +79,14 @@ has 'template_path'  => (
 
 Quick summary of what the module does.
 
-Perhaps a little code snippet.
+For a private application you will receive the access_token/secret when you
+submit your X509 to xero. You can ignore login/auth in this instance as follows:
+use Net::Xero;
 
-    use Net::Xero;
-
-    my $foo = Net::Xero->new();
-    ...
+my $foo = Net::Xero->new(
+  access_token => 'YY',
+  access_secret => 'XX',
+);
 
 =head1 EXPORT
 
@@ -195,17 +198,9 @@ sub auth {
 =cut
 
 sub set_cert {
-    my ($self, $path) = @_;
-
-    unless (-f $path) {
-        warn("No such file: $path: " . $!);
-        return;
-    }
-
-    open(CERT, '<', $path)
-        or warn("Could not read certificate: $path: " . $!);
-    $self->cert(join('', <CERT>));
-    close CERT;
+  my ($self, $path) = @_;
+  my $cert = io $path;
+  $self->cert($cert->all);
 }
 
 =head2 get_inv_by_ref
@@ -227,6 +222,28 @@ sub create_invoice {
     my ($self, $hash) = @_;
     $hash->{command} = 'create_invoice';
     return $self->_talk('Invoices', 'POST', $hash);
+}
+
+
+=head2 create_payment
+
+=cut
+
+sub create_payment {
+    my ($self, $data) = @_;
+    $data->{command} = 'payments';
+    return $self->_talk('Payments', 'POST', $data);
+}
+
+=head2 create_contact
+
+=cut
+
+sub create_contact {
+   my ($self, $data) = @_;
+   $data->{command} = 'create_contact';
+   $data->{Contacts}->{Contact} = $data;
+   return $self->_talk('Contacts', 'POST', $data);
 }
 
 =head2 approve_credit_note
@@ -279,8 +296,7 @@ sub _talk {
     my ($self, $command, $method, $hash) = @_;
 
     my $path = join('', map(ucfirst, split(/_/, $command)));
-
-    $hash->{command} = $command if ($method =~ m/^(POST|PUT)$/);
+    $hash->{command} ||= $command if ($method =~ m/^(POST|PUT)$/);
 
     my $request_url = $self->api_url . '/api.xro/2.0/' . $path;
     my %opts        = (
@@ -298,14 +314,15 @@ sub _talk {
     my $request     = Net::OAuth->request("protected resource")->new(%opts);
     my $private_key = Crypt::OpenSSL::RSA->new_private_key($self->cert);
     $request->sign($private_key);
+    
+    my $req = HTTP::Request->new($method, $request->to_url);
 
-    my $req = HTTP::Request->new($method, $request_url);
-    $req->header(Authorization => $request->to_authorization_header);
-
+    #$req->header(Authorization => $request->to_authorization_header);
     if ($hash) {
-        $req->content('xml=' . uri_escape($self->_template($hash)));
-        $req->header('Content-Type' =>
-                'application/x-www-form-urlencoded; charset=utf-8');
+        #$req->content('xml=' . uri_escape($self->_template($hash)));
+        #$req->header('Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8');
+        $req->content($self->_template($hash));
+        $req->header('Content-Type' => 'form-data');
     }
 
     print STDERR $req->as_string if $self->debug;
@@ -330,8 +347,7 @@ sub _talk {
 
 sub _template {
     my ($self, $hash) = @_;
-
-    $hash->{command} .= '.tt';
+    $hash->{command} = lc ($hash->{command} .= '.tt');
     print STDERR Dumper($hash) if $self->debug;
     my $t;
     if ($self->debug) {
