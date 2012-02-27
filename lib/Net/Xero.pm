@@ -224,6 +224,12 @@ sub create_invoice {
     return $self->_talk('Invoices', 'POST', $hash);
 }
 
+sub void_invoice  {
+  my ($self, $guid) = @_;
+  my $hash = { guid => $guid } ;
+  $hash->{command} = 'void_invoice';
+  return $self->_talk('Invoices', 'POST', $hash );
+}
 
 =head2 create_payment
 
@@ -334,7 +340,7 @@ sub _talk {
         return XMLin($res->content);
     }
     else {
-        warn "Something went wrong: " . $res->status_line;
+      #warn "Something went wrong: " . $res->status_line;
         $self->error($res->status_line . " " . $res->content);
     }
 
