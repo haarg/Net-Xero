@@ -16,7 +16,7 @@
     <Addresses>
       <Address>
         <AddressType>STREET</AddressType>
-        <AttentionTo><![CDATA[[[% contact.first_name %] [% contact.last_name %]]]></AttentionTo>
+        <AttentionTo><![CDATA[[% contact.first_name %] [% contact.last_name %]]]></AttentionTo>
         <AddressLine1><![CDATA[[% contact.address_line_1 %]]]></AddressLine1>
         <AddressLine2><![CDATA[[% contact.address_line_2 %]]]></AddressLine2>
         <AddressLine3><![CDATA[[% contact.address_line_3 %]]]></AddressLine3>
