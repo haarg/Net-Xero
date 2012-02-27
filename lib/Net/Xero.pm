@@ -48,6 +48,7 @@ has 'error' => (
     is        => 'rw',
     isa       => 'Str',
     predicate => 'has_error',
+    clearer   => 'clear_error',
 );
 has 'key'    => (is => 'rw', isa => 'Str');
 has 'secret' => (is => 'rw', isa => 'Str');
