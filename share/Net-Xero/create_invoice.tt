@@ -84,5 +84,5 @@
   <TotalTax>[% tax %]</TotalTax>
   <SubTotal>[% net %]</SubTotal>
   [%- END %]
-  <Total>[% total %]</Total>
+  [%- IF total %]<Total>[% total %]</Total>[%- END %]
 </Invoice>
