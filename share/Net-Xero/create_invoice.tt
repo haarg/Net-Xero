@@ -46,7 +46,7 @@
   <LineItems>
   [%- FOREACH line IN lineitems %]
     <LineItem>
-      <Description>[% line.desc %]</Description>
+      <Description><![CDATA[[[% line.desc %]]]></Description>
       <Quantity>[% line.quantity %]</Quantity>
       <UnitAmount>[% line.amount %]</UnitAmount>
       [% IF line.account %]<AccountCode>[% line.account %]</AccountCode>[% END %]
