@@ -14,6 +14,7 @@ use Crypt::OpenSSL::RSA;
 use URI::Escape;
 use Data::Dumper;
 use IO::All;
+use Encode qw(decode encode);
 
 $Net::OAuth::PROTOCOL_VERSION = Net::OAuth::PROTOCOL_VERSION_1_0A;
 
@@ -321,14 +322,13 @@ sub _talk {
     my $request     = Net::OAuth->request("protected resource")->new(%opts);
     my $private_key = Crypt::OpenSSL::RSA->new_private_key($self->cert);
     $request->sign($private_key);
-    
     my $req = HTTP::Request->new($method, $request->to_url);
 
     #$req->header(Authorization => $request->to_authorization_header);
     if ($hash) {
         #$req->content('xml=' . uri_escape($self->_template($hash)));
         #$req->header('Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8');
-        $req->content($self->_template($hash));
+        $req->content(encode('UTF-8', $self->_template($hash)));
         $req->header('Content-Type' => 'form-data');
     }
 
@@ -342,7 +342,7 @@ sub _talk {
     }
     else {
       #warn "Something went wrong: " . $res->status_line;
-        $self->error($res->status_line . " " . $res->content);
+      $self->error($res->status_line . " " . $res->content);
     }
 
     return;
