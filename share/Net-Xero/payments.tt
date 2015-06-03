@@ -11,6 +11,8 @@
     <Date>[% date %]</Date>
     <Amount>[% amount %]</Amount>
     <Description><![CDATA[[% description %]]]></Description>
+    <CurrencyCode>[% currency %]</CurrencyCode>
+    <Reference>[% reference %]</Reference>
   </Payment>
 </Payments>
 

@@ -4,17 +4,14 @@ use 5.010;
 use Mouse;
 use Net::OAuth;
 use LWP::UserAgent;
-use Template::Alloy;
 use HTTP::Request::Common;
 use Data::Random qw(rand_chars);
 use XML::LibXML::Simple qw(XMLin);
 use File::ShareDir 'dist_dir';
-use Template::Alloy;
+use Template;
 use Crypt::OpenSSL::RSA;
 use URI::Escape;
 use Data::Dumper;
-use IO::All;
-use Encode qw(decode encode);
 
 $Net::OAuth::PROTOCOL_VERSION = Net::OAuth::PROTOCOL_VERSION_1_0A;
 
@@ -24,11 +21,11 @@ Net::Xero - The great new Net::Xero!
 
 =head1 VERSION
 
-Version 0.14.14
+Version 0.20.20
 
 =cut
 
-our $VERSION = '0.14';
+our $VERSION = '0.20';
 
 has 'api_url' => (
     is      => 'rw',
@@ -200,9 +197,17 @@ sub auth {
 =cut
 
 sub set_cert {
-  my ($self, $path) = @_;
-  my $cert = io $path;
-  $self->cert($cert->all);
+    my ($self, $path) = @_;
+
+    unless (-f $path) {
+        warn("No such file: $path: " . $!);
+        return;
+    }
+
+    open(CERT, '<', $path)
+        or warn("Could not read certificate: $path: " . $!);
+    $self->cert(join('', <CERT>));
+    close CERT;
 }
 
 =head2 get_inv_by_ref
@@ -210,9 +215,63 @@ sub set_cert {
 =cut
 
 sub get_inv_by_ref {
-    my ($self, $ref) = @_;
+    my ($self, @ref) = @_;
 
-    my $path = 'Invoices?where=Reference.ToString()=="' . $ref . '"';
+    my $path = 'Invoices?where=Reference.ToString()=="' . (shift @ref) . '"';
+    $path .= ' OR Reference.ToString()=="' . $_ . '"' foreach (@ref);
+
+    return $self->_talk($path, 'GET');
+}
+
+=head2 get_invoices
+
+=cut
+
+sub get_invoices {
+    my ($self, $where) = @_;
+
+    my $path = 'Invoices';
+
+    return $self->_talk($path, 'GET') unless (ref $where eq 'HASH');
+
+    $path .= '?where=';
+    my $conjunction =
+        (exists $where->{'conjunction'}) ? uc $where->{'conjunction'} : 'OR';
+    my $first = 1;
+
+    foreach my $key (%{$where}) {
+        $path .= " $conjunction " unless $first;
+
+        given ($key) {
+            when ('reference') {
+                my @refs = @{ $where->{$key} };
+                $path .= 'Reference.ToString()=="' . (shift @refs) . '"';
+                $path .= ' OR Reference.ToString()=="' . $_ . '"'
+                    foreach (@refs);
+            }
+            when ('contact') {
+                my @contacts = @{ $where->{$key} };
+                my $contact  = shift @contacts;
+                $path .= join(
+                    ' AND ',
+                    map {
+                              "Contact."
+                            . ucfirst($_) . '=="'
+                            . $contact->{$_} . '"'
+                        } keys %{$contact});
+
+                # finish foreach
+            }
+            when ('number') {
+                my @numbers = @{ $where->{$key} };
+                $path .= ' OR InvoiceNumber.ToString()=="' . $_ . '"'
+                    foreach (@numbers);
+            }
+        }
+
+        $first = 0;
+    }
+
     return $self->_talk($path, 'GET');
 }
 
@@ -264,6 +323,16 @@ sub approve_credit_note {
     return $self->_talk('CreditNotes', 'POST', $hash);
 }
 
+=head2 status_invoice
+
+=cut
+
+sub status_invoice {
+    my ($self, $hash) = @_;
+    $hash->{command} = 'status_invoice';
+    return $self->_talk('Invoices', 'POST', $hash);
+}
+
 =head2 get
 
 =cut
@@ -303,8 +372,9 @@ normally not need to access this directly.
 sub _talk {
     my ($self, $command, $method, $hash) = @_;
 
+    $self->clear_error;
+
     my $path = join('', map(ucfirst, split(/_/, $command)));
-    $hash->{command} ||= $command if ($method =~ m/^(POST|PUT)$/);
 
     my $request_url = $self->api_url . '/api.xro/2.0/' . $path;
     my %opts        = (
@@ -319,17 +389,28 @@ sub _talk {
         token_secret => $self->access_secret,
     );
 
+    my $content;
+    if ($method =~ m/^(POST|PUT)$/) {
+        $hash->{command} ||= $command;
+        $content = $self->_template($hash);
+        $opts{extra_params} = { xml => $content } if ($method eq 'POST');
+    }
+
     my $request     = Net::OAuth->request("protected resource")->new(%opts);
     my $private_key = Crypt::OpenSSL::RSA->new_private_key($self->cert);
     $request->sign($private_key);
     my $req = HTTP::Request->new($method, $request->to_url);
 
-    #$req->header(Authorization => $request->to_authorization_header);
-    if ($hash) {
-        #$req->content('xml=' . uri_escape($self->_template($hash)));
-        #$req->header('Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8');
-        $req->content(encode('UTF-8', $self->_template($hash)));
-        $req->header('Content-Type' => 'form-data');
+    my $req = HTTP::Request->new($method, $request_url);
+
+    if ($hash and ($method eq 'POST')) {
+        $req->content($request->to_post_body);
+        $req->header('Content-Type' =>
+                'application/x-www-form-urlencoded; charset=utf-8');
+    }
+    else {
+        $req->content($content) if ($hash and ($method eq 'PUT'));
+        $req->header(Authorization => $request->to_authorization_header);
     }
 
     print STDERR $req->as_string if $self->debug;
@@ -341,32 +422,36 @@ sub _talk {
         return XMLin($res->content);
     }
     else {
-      #warn "Something went wrong: " . $res->status_line;
-      $self->error($res->status_line . " " . $res->content);
+        warn "Something went wrong: " . $res->status_line;
+        $self->error($res->status_line . " " . $res->content);
     }
 
     return;
 }
 
-=head2 talk
+=head2 _template
 
 =cut
 
 sub _template {
     my ($self, $hash) = @_;
-    $hash->{command} = lc ($hash->{command} .= '.tt');
+
+    $hash->{command} .= '.tt';
     print STDERR Dumper($hash) if $self->debug;
-    my $t;
+    my $tt;
     if ($self->debug) {
-        $t = Template::Alloy->new(
-            DEBUG        => 'DEBUG_ALL',
-            INCLUDE_PATH => [ $self->template_path ]);
+        $tt = Template->new(
+            #DEBUG        => 'all',
+            INCLUDE_PATH => [ $self->template_path ],
+        );
     }
     else {
-        $t = Template::Alloy->new(INCLUDE_PATH => [ $self->template_path ]);
+        $tt = Template->new(INCLUDE_PATH => [ $self->template_path ]);
     }
     my $template = '';
-    $t->process('frame.tt', $hash, \$template) || die $t->error;
+    $tt->process('frame.tt', $hash, \$template)
+        || die $tt->error;
+    utf8::encode($template);
     print STDERR $template if $self->debug;
 
     return $template;
