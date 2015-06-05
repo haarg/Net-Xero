@@ -5,7 +5,7 @@
   [%- IF currency %]<CurrencyCode>[% currency %]</CurrencyCode>[%- END %]
 
   <Contact>
-    <ContactNumber>[% contact.id %]</ContactNumber>
+    <ContactNumber><![CDATA[[% contact.id %]]]></ContactNumber>
     <ContactStatus>ACTIVE</ContactStatus>
     <EmailAddress><![CDATA[[% contact.email %]]]></EmailAddress>
     <Name><![CDATA[[% contact.first_name %] [% contact.last_name %]]]></Name>

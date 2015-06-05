@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-#
 
 use common::sense;
 use Net::Xero;

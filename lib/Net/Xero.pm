@@ -1,7 +1,8 @@
 package Net::Xero;
 
 use 5.010;
-use Mouse;
+use strictures 1;
+use Moo;
 use Net::OAuth;
 use LWP::UserAgent;
 use HTTP::Request::Common;
@@ -12,16 +13,17 @@ use Template;
 use Crypt::OpenSSL::RSA;
 use URI::Escape;
 use Data::Dumper;
+use IO::All;
 
 $Net::OAuth::PROTOCOL_VERSION = Net::OAuth::PROTOCOL_VERSION_1_0A;
 
 =head1 NAME
 
-Net::Xero - The great new Net::Xero!
+Net::Xero - Interface to Xero accounting
 
 =head1 VERSION
 
-Version 0.20.20
+Version 0.40
 
 =cut
 
@@ -29,47 +31,49 @@ our $VERSION = '0.20';
 
 has 'api_url' => (
     is      => 'rw',
-    isa     => 'Str',
     default => 'https://api.xero.com',
 );
+
 has 'ua' => (
     is      => 'rw',
-    isa     => 'LWP::UserAgent',
-    default => sub { new LWP::UserAgent },
+    default => sub { LWP::UserAgent->new },
 );
+
 has 'debug' => (
     is      => 'rw',
-    isa     => 'Bool',
     default => 0,
 );
+
 has 'error' => (
     is        => 'rw',
-    isa       => 'Str',
     predicate => 'has_error',
     clearer   => 'clear_error',
 );
-has 'key'    => (is => 'rw', isa => 'Str');
-has 'secret' => (is => 'rw', isa => 'Str');
-has 'cert'   => (is => 'rw', isa => 'Str');
+
+has 'key'    => (is => 'rw');
+has 'secret' => (is => 'rw');
+has 'cert'   => (is => 'rw');
+
 has 'nonce'  => (
     is      => 'ro',
-    isa     => 'Str',
     default => join('', rand_chars(size => 16, set => 'alphanumeric')),
 );
-has 'login_link' => (is => 'rw', isa => 'Str');
+
+has 'login_link' => (is => 'rw');
+
 has 'callback_url' => (
     is      => 'rw',
-    isa     => 'Str',
     default => 'http://localhost:3000/callback',
 );
-has 'request_token'  => (is => 'rw', isa => 'Str');
-has 'request_secret' => (is => 'rw', isa => 'Str');
-has 'access_token'   => (is => 'rw', isa => 'Str');
-has 'access_secret'  => (is => 'rw', isa => 'Str');
+
+has 'request_token'  => (is => 'rw');
+has 'request_secret' => (is => 'rw');
+has 'access_token'   => (is => 'rw');
+has 'access_secret'  => (is => 'rw');
+
 has 'template_path'  => (
     is      => 'rw',
-    isa     => 'Str',
-    default => (-d dist_dir('Net-Xero') ? dist_dir('Net-Xero') : {}),
+    default => ( dist_dir('Net-Xero') ),
 );
 
 #has 'template_path' => (is => 'rw', isa => 'Str');
@@ -188,7 +192,7 @@ sub auth {
     }
     else {
         $self->error($res->status_line);
-        warn "Something went wrong: " . $res->status_line;
+        $self->error($res->status_line . "\n" . $res->content);
     }
 }
 
@@ -197,17 +201,9 @@ sub auth {
 =cut
 
 sub set_cert {
-    my ($self, $path) = @_;
-
-    unless (-f $path) {
-        warn("No such file: $path: " . $!);
-        return;
-    }
-
-    open(CERT, '<', $path)
-        or warn("Could not read certificate: $path: " . $!);
-    $self->cert(join('', <CERT>));
-    close CERT;
+  my ($self, $path) = @_;
+  my $cert = io $path;
+  $self->cert($cert->all);
 }
 
 =head2 get_inv_by_ref
@@ -399,10 +395,8 @@ sub _talk {
     my $request     = Net::OAuth->request("protected resource")->new(%opts);
     my $private_key = Crypt::OpenSSL::RSA->new_private_key($self->cert);
     $request->sign($private_key);
-    my $req = HTTP::Request->new($method, $request->to_url);
-
+    #my $req = HTTP::Request->new($method, $request->to_url);
     my $req = HTTP::Request->new($method, $request_url);
-
     if ($hash and ($method eq 'POST')) {
         $req->content($request->to_post_body);
         $req->header('Content-Type' =>
@@ -422,7 +416,7 @@ sub _talk {
         return XMLin($res->content);
     }
     else {
-        warn "Something went wrong: " . $res->status_line;
+        warn "Something went wrong: " . $res->content;
         $self->error($res->status_line . " " . $res->content);
     }
 
@@ -448,6 +442,7 @@ sub _template {
     else {
         $tt = Template->new(INCLUDE_PATH => [ $self->template_path ]);
     }
+
     my $template = '';
     $tt->process('frame.tt', $hash, \$template)
         || die $tt->error;
