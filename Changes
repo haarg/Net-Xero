@@ -1,5 +1,16 @@
 Revision history for Net-Xero
 
+0.44    2015-06-05T15:09:00
+        Given is experimental
+
+0.43    2015-06-05T15:09:00
+        Fix version
+
+0.42    2015-06-05T13:58:22
+        Merge with fixed branch
+        Move to moo not mouse
+
+
 0.20    2012-05-31T01:37:23
         proper utf8 support
         added reference field to payments template

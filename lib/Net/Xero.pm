@@ -1,5 +1,5 @@
 package Net::Xero;
-
+$Net::Xero::VERSION = '0.44';
 use 5.010;
 use strictures 1;
 use Moo;
@@ -14,6 +14,7 @@ use Crypt::OpenSSL::RSA;
 use URI::Escape;
 use Data::Dumper;
 use IO::All;
+no warnings 'experimental::smartmatch';
 
 $Net::OAuth::PROTOCOL_VERSION = Net::OAuth::PROTOCOL_VERSION_1_0A;
 
@@ -26,8 +27,6 @@ Net::Xero - Interface to Xero accounting
 Version 0.40
 
 =cut
-
-our $VERSION = '0.20';
 
 has 'api_url' => (
     is      => 'rw',
