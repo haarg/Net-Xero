@@ -14,7 +14,6 @@ use Crypt::OpenSSL::RSA;
 use URI::Escape;
 use Data::Dumper;
 use IO::All;
-no warnings 'experimental::smartmatch';
 
 $Net::OAuth::PROTOCOL_VERSION = Net::OAuth::PROTOCOL_VERSION_1_0A;
 
@@ -237,31 +236,29 @@ sub get_invoices {
     foreach my $key (%{$where}) {
         $path .= " $conjunction " unless $first;
 
-        given ($key) {
-            when ('reference') {
-                my @refs = @{ $where->{$key} };
-                $path .= 'Reference.ToString()=="' . (shift @refs) . '"';
-                $path .= ' OR Reference.ToString()=="' . $_ . '"'
-                    foreach (@refs);
-            }
-            when ('contact') {
-                my @contacts = @{ $where->{$key} };
-                my $contact  = shift @contacts;
-                $path .= join(
-                    ' AND ',
-                    map {
-                              "Contact."
-                            . ucfirst($_) . '=="'
-                            . $contact->{$_} . '"'
-                        } keys %{$contact});
+        if ($key eq 'reference') {
+            my @refs = @{ $where->{$key} };
+            $path .= 'Reference.ToString()=="' . (shift @refs) . '"';
+            $path .= ' OR Reference.ToString()=="' . $_ . '"'
+                foreach (@refs);
+        }
+        elsif ($key eq 'contact') {
+            my @contacts = @{ $where->{$key} };
+            my $contact  = shift @contacts;
+            $path .= join(
+                ' AND ',
+                map {
+                          "Contact."
+                        . ucfirst($_) . '=="'
+                        . $contact->{$_} . '"'
+                    } keys %{$contact});
 
-                # finish foreach
-            }
-            when ('number') {
-                my @numbers = @{ $where->{$key} };
-                $path .= ' OR InvoiceNumber.ToString()=="' . $_ . '"'
-                    foreach (@numbers);
-            }
+            # finish foreach
+        }
+        elsif ($key eq 'number') {
+            my @numbers = @{ $where->{$key} };
+            $path .= ' OR InvoiceNumber.ToString()=="' . $_ . '"'
+                foreach (@numbers);
         }
 
         $first = 0;
